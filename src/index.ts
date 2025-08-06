@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+import { createServer } from 'http';
+import { SocketService } from './services/socketService';
 
 import userRoutes from './routes/userRoutes';
 import adminRoutes from './routes/adminRoutes';
@@ -27,7 +29,11 @@ const limiter = rateLimit({
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+  ],
   credentials: true,
 }));
 app.use(limiter);
@@ -62,7 +68,10 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-app.listen(PORT, () => {
+const server = createServer(app);
+export const socketService = new SocketService(server);
+
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
 });

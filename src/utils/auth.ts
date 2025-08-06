@@ -1,5 +1,6 @@
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { StringValue } from 'ms';
 
 export interface TokenPayload {
   id: number;
@@ -22,9 +23,12 @@ export const generateToken = (payload: TokenPayload): string => {
     throw new Error('JWT_SECRET is not defined');
   }
   
-  return jwt.sign(payload, secret, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as StringValue;
+  const options: SignOptions = {
+    expiresIn,
+  };
+  
+  return jwt.sign(payload, secret, options);
 };
 
 export const verifyToken = (token: string): TokenPayload => {

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
+import { socketService } from '../index';
 
 const prisma = new PrismaClient();
 
@@ -144,7 +145,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       }),
     ]);
 
-    res.json({
+    const stats = {
       daily: {
         amount: dailyDonations._sum.amount || 0,
         count: dailyDonations._count,
@@ -166,7 +167,12 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         amount: totalDonations._sum.amount || 0,
         count: totalDonations._count,
       },
-    });
+    };
+
+    // Emit updated stats through WebSocket
+    await socketService.emitDashboardStats();
+
+    res.json(stats);
   } catch (error) {
     console.error('Dashboard stats error:', error);
     res.status(500).json({ message: 'Internal server error' });
