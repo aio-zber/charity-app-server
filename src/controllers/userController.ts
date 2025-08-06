@@ -1,0 +1,181 @@
+import { Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
+import { hashPassword, comparePassword, generateToken } from '../utils/auth';
+
+const prisma = new PrismaClient();
+
+export const registerUser = async (req: Request, res: Response) => {
+  try {
+    const { username, password, age } = req.body;
+
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { username },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ message: 'Username already exists' });
+    }
+
+    // Hash password
+    const hashedPassword = await hashPassword(password);
+
+    // Create user
+    const user = await prisma.user.create({
+      data: {
+        username,
+        password: hashedPassword,
+        age: parseInt(age),
+      },
+    });
+
+    // Generate token
+    const token = generateToken({
+      id: user.id,
+      username: user.username,
+      type: 'user',
+    });
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        age: user.age,
+      },
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const loginUser = async (req: Request, res: Response) => {
+  try {
+    const { username, password } = req.body;
+
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { username },
+    });
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Check password
+    const isValidPassword = await comparePassword(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Generate token
+    const token = generateToken({
+      id: user.id,
+      username: user.username,
+      type: 'user',
+    });
+
+    res.json({
+      message: 'Login successful',
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        age: user.age,
+      },
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getUserProfile = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        username: true,
+        age: true,
+        createdAt: true,
+        donations: {
+          select: {
+            id: true,
+            amount: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('Profile error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const updateUserProfile = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    const { username, age, password } = req.body;
+    const updateData: any = {};
+
+    if (username) {
+      // Check if username is already taken by another user
+      const existingUser = await prisma.user.findUnique({
+        where: { username },
+      });
+
+      if (existingUser && existingUser.id !== req.user.id) {
+        return res.status(409).json({ message: 'Username already exists' });
+      }
+
+      updateData.username = username;
+    }
+
+    if (age) {
+      updateData.age = parseInt(age);
+    }
+
+    if (password) {
+      updateData.password = await hashPassword(password);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updateData,
+      select: {
+        id: true,
+        username: true,
+        age: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
